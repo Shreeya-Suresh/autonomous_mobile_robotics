@@ -16,6 +16,12 @@ RUN apt-get update && apt-get install -y \
     python3-rosdep \
     python3-vcstool \
     ros-dev-tools \
+    \
+    # ---- ros2_control (REQUIRED by lidarbot) ----
+    ros-humble-ros2-control \
+    ros-humble-ros2-controllers \
+    \
+    # ---- hardware / utilities ----
     i2c-tools \
     libi2c-dev \
     && rm -rf /var/lib/apt/lists/*
