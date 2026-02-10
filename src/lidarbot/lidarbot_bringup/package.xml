@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>lidarbot_bringup</name>
+  <version>0.0.0</version>
+  <description>Lidarbot bringup package</description>
+  <maintainer email="noobinventor@tutamail.com">Chinedu Amadi</maintainer>
+  <license>CC-BY-SA-4.0 license </license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  
+  <depend>theora_image_transport</depend>
+  <depend>image_transport_plugins</depend>
+
+  <exec_depend>robot_localization</exec_depend>
+  <exec_depend>rplidar_ros</exec_depend>
+  <exec_depend>twist_mux</exec_depend>
+  <exec_depend>v4l2_camera</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
