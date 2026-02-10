@@ -3,39 +3,29 @@ FROM ros:humble
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# ---------- Core system + ROS tooling ----------
+# ---------- Minimal tools ----------
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
     curl \
-    wget \
     vim \
-    gdb \
     python3-pip \
     python3-colcon-common-extensions \
     python3-rosdep \
-    python3-vcstool \
     ros-dev-tools \
     \
-    # ---- ros2_control (REQUIRED by lidarbot) ----
-    ros-humble-ros2-control \
-    ros-humble-ros2-controllers \
+    # ---- SLAM only ----
+    ros-humble-slam-toolbox \
     \
-    # ---- hardware / utilities ----
+    # ---- hardware utils ----
     i2c-tools \
     libi2c-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# ---------- rosdep (safe on PC & Pi) ----------
+# ---------- rosdep init (no install here) ----------
 RUN rosdep init || true
-RUN rosdep update
 
 # ---------- Workspace ----------
 WORKDIR /ros2_ws
 
-# ---------- Entrypoint ----------
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]

@@ -1,5 +1,5 @@
 {
-  "name": "autonomous_mobile_robotics_humble",
+  "name": "amr-humble-minimal",
 
   "build": {
     "dockerfile": "../docker/Dockerfile",
@@ -12,31 +12,19 @@
   "runArgs": [
     "--net=host",
     "--privileged",
-    "--gpus=all",
-
     "--volume=/dev:/dev",
 
     "-e", "DISPLAY=${localEnv:DISPLAY}",
-    "-v", "/tmp/.X11-unix:/tmp/.X11-unix:rw",
-
-    "--group-add=video",
-    "--group-add=render"
+    "-v", "/tmp/.X11-unix:/tmp/.X11-unix:rw"
   ],
 
   "containerEnv": {
-    "NVIDIA_VISIBLE_DEVICES": "all",
-    "NVIDIA_DRIVER_CAPABILITIES": "graphics,utility,compute",
-    "__GLX_VENDOR_LIBRARY_NAME": "nvidia"
+    "ROS_DOMAIN_ID": "0",
+    "ROS_LOCALHOST_ONLY": "0"
   },
 
-  "remoteUser": "vscode",
-
-  "features": {
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "installZsh": true,
-      "installOhMyZsh": false
-    }
-  },
-
-  "postCreateCommand": "echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc"
+  "postCreateCommand": [
+    "echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc",
+    "echo '[ -f /ros2_ws/install/setup.bash ] && source /ros2_ws/install/setup.bash' >> ~/.bashrc"
+  ]
 }
