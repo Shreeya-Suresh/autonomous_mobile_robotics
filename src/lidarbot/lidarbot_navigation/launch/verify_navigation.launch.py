@@ -1,9 +1,3 @@
-# This launch file brings up the physical lidarbot, raspberry pi camera v1.3,
-# RPLIDAR A1 and also integrates ros2_control, twist_mux, robot_localization
-# and joystick control
-
-# File adapted from https://automaticaddison.com
-
 import os
 
 from launch import LaunchDescription
@@ -13,37 +7,32 @@ from launch.actions import (
     TimerAction,
     RegisterEventHandler,
 )
-from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, Command
 from launch.event_handlers import OnProcessStart
-
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
 
-    # Set the path to different files and folders
-    pkg_path = FindPackageShare(package="lidarbot_bringup").find("lidarbot_bringup")
-    pkg_description = FindPackageShare(package="lidarbot_description").find(
-        "lidarbot_description"
-    )
-    pkg_teleop = FindPackageShare(package="lidarbot_teleop").find("lidarbot_teleop")
-    pkg_navigation = FindPackageShare(package="lidarbot_navigation").find(
-        "lidarbot_navigation"
-    )
+    # Paths
+    pkg_bringup = FindPackageShare("lidarbot_bringup").find("lidarbot_bringup")
+    pkg_description = FindPackageShare("lidarbot_description").find("lidarbot_description")
+    pkg_navigation = FindPackageShare("lidarbot_navigation").find("lidarbot_navigation")
 
-    controller_params_file = os.path.join(pkg_path, "config/controllers.yaml")
-    twist_mux_params_file = os.path.join(pkg_teleop, "config/twist_mux.yaml")
+    # Config Files
+    controller_params_file = os.path.join(pkg_bringup, "config/controllers.yaml")
     ekf_params_file = os.path.join(pkg_navigation, "config/ekf.yaml")
+    nav2_params_file = os.path.join(pkg_navigation, "config/nav2_params.yaml")
+    map_file = os.path.join(pkg_navigation, "maps", "real_map3.yaml")
+    rviz_config_file = os.path.join(pkg_navigation, "rviz", "nav2_default_view.rviz")
 
-    # Launch configuration variables
+    # Launch Configs
     use_sim_time = LaunchConfiguration("use_sim_time")
     use_ros2_control = LaunchConfiguration("use_ros2_control")
-    use_robot_localization = LaunchConfiguration("use_robot_localization")
 
-    # Declare the launch arguments
+    # Arguments
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         name="use_sim_time",
         default_value="False",
@@ -55,14 +44,24 @@ def generate_launch_description():
         default_value="True",
         description="Use ros2_control if true",
     )
-
-    declare_use_robot_localization_cmd = DeclareLaunchArgument(
-        name="use_robot_localization",
-        default_value="True",
-        description="Use robot_localization package if true",
+    
+    declare_map_cmd = DeclareLaunchArgument(
+        name="map",
+        default_value=map_file,
+        description="Full path to map file to load"
     )
 
-    # Start robot state publisher
+    declare_params_file_cmd = DeclareLaunchArgument(
+        name="params_file",
+        default_value=nav2_params_file,
+        description="Full path to the ROS2 parameters file to use for all launched nodes",
+    )
+
+    # ----------------------------------------
+    # 1. HARDWARE & TRANSFORMS
+    # ----------------------------------------
+    
+    # Robot State Publisher
     start_robot_state_publisher_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [os.path.join(pkg_description, "launch", "robot_state_publisher_launch.py")]
@@ -77,40 +76,37 @@ def generate_launch_description():
         ["ros2 param get --hide-type /robot_state_publisher robot_description"]
     )
 
-    # Launch controller manager
+    # Controller Manager
     start_controller_manager_cmd = Node(
         package="controller_manager",
         executable="ros2_control_node",
         parameters=[{"robot_description": robot_description}, controller_params_file],
     )
 
-    # Spawn diff_controller
+    # Spawners
     start_diff_controller_cmd = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["diff_controller", "--controller-manager", "/controller_manager"],
     )
 
-    # Spawn joint_state_broadcaser
     start_joint_broadcaster_cmd = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["joint_broadcaster", "--controller-manager", "/controller_manager"],
     )
 
-    # Spawn imu_sensor_broadcaster
     start_imu_broadcaster_cmd = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["imu_broadcaster", "--controller-manager", "/controller_manager"],
     )
 
-    # Delayed controller manager action
+    # Delayed Spawners
     start_delayed_controller_manager = TimerAction(
         period=2.0, actions=[start_controller_manager_cmd]
     )
 
-    # Delayed diff_drive_spawner action
     start_delayed_diff_drive_spawner = RegisterEventHandler(
         event_handler=OnProcessStart(
             target_action=start_controller_manager_cmd,
@@ -118,7 +114,6 @@ def generate_launch_description():
         )
     )
 
-    # Delayed joint_broadcaster_spawner action
     start_delayed_joint_broadcaster_spawner = RegisterEventHandler(
         event_handler=OnProcessStart(
             target_action=start_controller_manager_cmd,
@@ -126,76 +121,92 @@ def generate_launch_description():
         )
     )
 
-    # Delayed imu_broadcaster_spawner action
     start_delayed_imu_broadcaster_spawner = RegisterEventHandler(
         event_handler=OnProcessStart(
             target_action=start_controller_manager_cmd,
             on_start=[start_imu_broadcaster_cmd],
         )
     )
-
-    # Start robot localization using an Extended Kalman Filter
-    start_robot_localization_cmd = Node(
-        condition=IfCondition(use_robot_localization),
-        package="robot_localization",
-        executable="ekf_node",
-        parameters=[
-            ekf_params_file,
-            {'use_sim_time': LaunchConfiguration('use_sim_time')},
-            ],
-        remappings=[("/odometry/filtered", "/odom")],
-    )
-
-    # Start joystick node
-    start_joystick_cmd = IncludeLaunchDescription(
+    
+    # Lidar
+    start_lidar_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            [os.path.join(pkg_teleop, "launch", "joystick_launch.py")]
-    ),
-        launch_arguments={
-            "use_sim_time": use_sim_time,
-        }.items(),
+            [os.path.join(pkg_bringup, "launch", "ydlidar_launch.py")]
+        )
     )
     
-    # Start rplidar node
-    start_rplidar_cmd = IncludeLaunchDescription(
+    # EKF (Provides odom -> base_link)
+    start_ekf_cmd = Node(
+        package="robot_localization",
+        executable="ekf_node",
+        name="ekf_filter_node",
+        output="screen",
+        parameters=[ekf_params_file, {"use_sim_time": use_sim_time}],
+        remappings=[("/odometry/filtered", "/odom")]
+    )
+
+    # ----------------------------------------
+    # 2. LOCALIZATION (AMCL + Map Server)
+    # ----------------------------------------
+    
+    start_localization_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            [os.path.join(pkg_path, "launch", "ydlidar_launch.py")]
-        )
+            [os.path.join(pkg_navigation, "launch", "localization_launch.py")]
+        ),
+        launch_arguments={
+            "map": LaunchConfiguration("map"),
+            "use_sim_time": use_sim_time,
+            "params_file": LaunchConfiguration("params_file"),
+            "autostart": "True",  # Ensure AMCL auto-starts
+        }.items(),
     )
 
-    # Start camera node
-    start_camera_cmd = IncludeLaunchDescription(
+    # ----------------------------------------
+    # 3. NAVIGATION (Planner + Controller)
+    # ----------------------------------------
+    
+    start_navigation_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            [os.path.join(pkg_path, "launch", "camera_launch.py")]
-        )
+            [os.path.join(pkg_navigation, "launch", "navigation_launch.py")]
+        ),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+            "params_file": LaunchConfiguration("params_file"),
+            "autostart": "True",
+        }.items(),
     )
 
-    # Start twist mux
-    start_twist_mux_cmd = Node(
-        package="twist_mux",
-        executable="twist_mux",
-        parameters=[twist_mux_params_file],
-        remappings=[("/cmd_vel_out", "/diff_controller/cmd_vel_unstamped")],
+    # ----------------------------------------
+    # 4. RVIZ
+    # ----------------------------------------
+    
+    start_rviz_cmd = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        arguments=["-d", rviz_config_file],
+        output="screen"
     )
 
-    # Create the launch description and populate
     ld = LaunchDescription()
 
-    # Declare the launch options
+    # Args
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(declare_use_ros2_control_cmd)
-    ld.add_action(declare_use_robot_localization_cmd)
+    ld.add_action(declare_map_cmd)
+    ld.add_action(declare_params_file_cmd)
 
-    # Add any actions
+    # Nodes
     ld.add_action(start_robot_state_publisher_cmd)
     ld.add_action(start_delayed_controller_manager)
     ld.add_action(start_delayed_diff_drive_spawner)
     ld.add_action(start_delayed_joint_broadcaster_spawner)
     ld.add_action(start_delayed_imu_broadcaster_spawner)
-    ld.add_action(start_robot_localization_cmd)
-    ld.add_action(start_joystick_cmd)
-    ld.add_action(start_rplidar_cmd)
-    ld.add_action(start_camera_cmd)
-    ld.add_action(start_twist_mux_cmd)
+    ld.add_action(start_lidar_cmd)
+    ld.add_action(start_ekf_cmd)
+    
+    ld.add_action(start_localization_cmd)
+    ld.add_action(start_navigation_cmd)
+    ld.add_action(start_rviz_cmd)
 
     return ld

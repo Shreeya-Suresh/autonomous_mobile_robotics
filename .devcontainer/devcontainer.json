@@ -1,13 +1,15 @@
 {
-  "name": "amr-humble-minimal",
+  "name": "humble-minimal",
 
   "build": {
     "dockerfile": "../docker/Dockerfile",
     "context": ".."
   },
 
-  "workspaceMount": "source=${localWorkspaceFolder},target=/ros2_ws,type=bind",
-  "workspaceFolder": "/ros2_ws",
+  "remoteUser": "ros",
+
+  "workspaceMount": "source=${localWorkspaceFolder},target=/home/ros/ros2_ws,type=bind",
+  "workspaceFolder": "/home/ros/ros2_ws",
 
   "runArgs": [
     "--net=host",
@@ -24,7 +26,8 @@
   },
 
   "postCreateCommand": [
+    "sudo chown -R ros:ros /home/ros/ros2_ws",
     "echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc",
-    "echo '[ -f /ros2_ws/install/setup.bash ] && source /ros2_ws/install/setup.bash' >> ~/.bashrc"
+    "echo '[ -f /home/ros/ros2_ws/install/setup.bash ] && source /home/ros/ros2_ws/install/setup.bash' >> ~/.bashrc"
   ]
 }

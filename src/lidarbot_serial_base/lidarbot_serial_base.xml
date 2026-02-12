@@ -1,0 +1,9 @@
+<library path="lidarbot_serial_base">
+  <class name="lidarbot_serial_base/LidarbotSerialHardware"
+         type="lidarbot_serial_base::LidarbotSerialHardware"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Serial Hardware Interface for Lidarbot
+    </description>
+  </class>
+</library>
