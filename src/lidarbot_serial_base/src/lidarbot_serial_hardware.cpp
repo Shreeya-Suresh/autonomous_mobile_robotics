@@ -7,6 +7,7 @@
 #include <vector>
 #include <sstream>
 #include <iostream>
+#include <iomanip>
 #include <unistd.h>
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -299,42 +300,32 @@ hardware_interface::return_type LidarbotSerialHardware::write(
 {
   if (serial_fd_ < 0) return hardware_interface::return_type::ERROR;
     
-  // Convert command (rad/s) to PWM.
-  // Assumption: Max 10 rad/s maps to 255 PWM.
-  // We add detailed logging to debug why motors aren't moving.
+  // Send velocity commands directly to ESP32 (rad/s)
+  // ESP32 will handle PID control to match target velocity
   
-  double rad_s_to_pwm = 255.0 / 10.0; // Scale factor
-  
-  int pwm_l = (int)(left_wheel_cmd_ * rad_s_to_pwm);
-  int pwm_r = (int)(right_wheel_cmd_ * rad_s_to_pwm);
-  
-  // Deadband/Min PWM check (Optional: motors might need min ~40 to move)
-  // if (std::abs(pwm_l) < 40 && std::abs(pwm_l) > 0) pwm_l = (pwm_l > 0) ? 40 : -40;
-  // if (std::abs(pwm_r) < 40 && std::abs(pwm_r) > 0) pwm_r = (pwm_r > 0) ? 40 : -40;
-
-  // Clamp
-  pwm_l = std::max(-255, std::min(255, pwm_l));
-  pwm_r = std::max(-255, std::min(255, pwm_r));
-  
-  // Format command
+  // Format: V,left_vel,right_vel (floats in rad/s)
   std::stringstream ss;
-  ss << "V," << pwm_l << "," << pwm_r << "\n";
+  ss << "V," << std::fixed << std::setprecision(3) 
+     << left_wheel_cmd_ << "," << right_wheel_cmd_ << "\n";
   std::string cmd = ss.str();
   
   // Send
   int bytes_written = ::write(serial_fd_, cmd.c_str(), cmd.length());
 
-  // Log every 1 second
-  if ((long)period.nanoseconds() % 100 == 0) { // Simple hack or use throttle
-      RCLCPP_INFO_THROTTLE(logger_, *rclcpp::get_clock_t(), 1000, 
-          "Write: Cmd(%.2f, %.2f) -> PWM(%d, %d) -> Serial(%s)", 
-          left_wheel_cmd_, right_wheel_cmd_, pwm_l, pwm_r, cmd.substr(0, cmd.length()-1).c_str());
+  // Log throttled
+  static auto last_log = std::chrono::steady_clock::now();
+  auto now = std::chrono::steady_clock::now();
+  if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log).count() > 1000) {
+      RCLCPP_INFO(logger_, "Write: Vel(%.3f, %.3f) rad/s -> Serial: %s", 
+          left_wheel_cmd_, right_wheel_cmd_, cmd.substr(0, cmd.length()-1).c_str());
+      last_log = now;
   }
 
   if (bytes_written < 0) {
-      RCLCPP_ERROR_THROTTLE(logger_, *rclcpp::get_clock_t(), 1000, "Failed to write to serial port!");
-      return hardware_interface::return_type::ERROR;
+    RCLCPP_ERROR(logger_, "Failed to write to serial port!");
+    return hardware_interface::return_type::ERROR;
   }
+
 
   return hardware_interface::return_type::OK;
 }

@@ -3,8 +3,14 @@
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 
-#define BAUD_RATE      115200
-#define LOOP_TIME_MS   10   // 100Hz
+// =====================
+// CONFIG
+// =====================
+
+#define BAUD_RATE        115200
+#define LOOP_TIME_MS     10        // 100 Hz telemetry
+#define MAX_WHEEL_RAD_S  18.0f     // <-- Measure and tune this!
+#define SERIAL_TIMEOUT   500       // ms safety stop
 
 // =====================
 // PIN DEFINITIONS
@@ -36,10 +42,10 @@ volatile long left_count = 0;
 volatile long right_count = 0;
 
 unsigned long lastLoop = 0;
+unsigned long lastCommandTime = 0;
 
 // DMP
 bool dmpReady = false;
-uint8_t devStatus;
 uint16_t packetSize;
 uint16_t fifoCount;
 uint8_t fifoBuffer[64];
@@ -60,6 +66,30 @@ char inputBuffer[SERIAL_BUFFER];
 uint8_t inputIndex = 0;
 
 // =====================
+// PWM CONFIG
+// =====================
+
+#define PWM_FREQ 20000
+#define PWM_RES  8
+
+// =====================
+// MOTOR CONTROL
+// =====================
+
+void setMotor(int dirPin, int pwmPin, int speed)
+{
+  speed = constrain(speed, -255, 255);
+
+  if (speed >= 0) {
+    digitalWrite(dirPin, HIGH);
+    ledcWrite(pwmPin, speed);
+  } else {
+    digitalWrite(dirPin, LOW);
+    ledcWrite(pwmPin, -speed);
+  }
+}
+
+// =====================
 // ENCODER ISR
 // =====================
 
@@ -78,51 +108,35 @@ void IRAM_ATTR rightISR() {
 }
 
 // =====================
-// MOTOR CONTROL
+// SERIAL COMMAND
 // =====================
 
-#define PWM_FREQ 20000
-#define PWM_RES  8
-
-void setMotor(int dirPin, int pwmPin, int speed) {
-
-  speed = constrain(speed, -255, 255);
-
-  if (speed >= 0) {
-    digitalWrite(dirPin, HIGH);
-    ledcWrite(pwmPin, speed);   // S3 uses pin-based ledcWrite
-  } else {
-    digitalWrite(dirPin, LOW);
-    ledcWrite(pwmPin, -speed);
-  }
-}
-
-// =====================
-// PROCESS SERIAL COMMAND
-// =====================
-
-void processCommand(char* cmd) {
-
-  Serial.print("RECEIVED: ");
-  Serial.println(cmd);
-
+void processCommand(char* cmd)
+{
   if (cmd[0] == 'V' && cmd[1] == ',') {
 
-    int l = 0, r = 0;
-    sscanf(cmd, "V,%d,%d", &l, &r);
+    float wl = 0.0f, wr = 0.0f;
+    sscanf(cmd, "V,%f,%f", &wl, &wr);
 
-    Serial.print("Parsed L=");
-    Serial.print(l);
-    Serial.print(" R=");
-    Serial.println(r);
+    // rad/s → normalized [-1,1]
+    float norm_l = wl / MAX_WHEEL_RAD_S;
+    float norm_r = wr / MAX_WHEEL_RAD_S;
 
-    setMotor(L_DIR, L_PWM, l);
-    setMotor(R_DIR, R_PWM, r);
+    norm_l = constrain(norm_l, -1.0f, 1.0f);
+    norm_r = constrain(norm_r, -1.0f, 1.0f);
+
+    int pwm_l = (int)(norm_l * 255.0f);
+    int pwm_r = (int)(norm_r * 255.0f);
+
+    setMotor(L_DIR, L_PWM, pwm_l);
+    setMotor(R_DIR, R_PWM, pwm_r);
+
+    lastCommandTime = millis();
   }
 }
 
-void readSerialNonBlocking() {
-
+void readSerialNonBlocking()
+{
   while (Serial.available()) {
 
     char c = Serial.read();
@@ -132,10 +146,8 @@ void readSerialNonBlocking() {
       processCommand(inputBuffer);
       inputIndex = 0;
     }
-    else {
-      if (inputIndex < SERIAL_BUFFER - 1) {
-        inputBuffer[inputIndex++] = c;
-      }
+    else if (inputIndex < SERIAL_BUFFER - 1) {
+      inputBuffer[inputIndex++] = c;
     }
   }
 }
@@ -144,22 +156,15 @@ void readSerialNonBlocking() {
 // SETUP
 // =====================
 
-void setup() {
-
+void setup()
+{
   Serial.begin(BAUD_RATE);
 
   // I2C
   Wire.begin(I2C_SDA, I2C_SCL);
   mpu.initialize();
 
-  devStatus = mpu.dmpInitialize();
-
-  mpu.setXGyroOffset(0);
-  mpu.setYGyroOffset(0);
-  mpu.setZGyroOffset(0);
-  mpu.setZAccelOffset(0);
-
-  if (devStatus == 0) {
+  if (mpu.dmpInitialize() == 0) {
     mpu.setDMPEnabled(true);
     packetSize = mpu.dmpGetFIFOPacketSize();
     dmpReady = true;
@@ -169,7 +174,6 @@ void setup() {
   pinMode(L_DIR, OUTPUT);
   pinMode(R_DIR, OUTPUT);
 
-  // ✅ ESP32-S3 CORRECT PWM INIT
   ledcAttach(L_PWM, PWM_FREQ, PWM_RES);
   ledcAttach(R_PWM, PWM_FREQ, PWM_RES);
 
@@ -189,19 +193,26 @@ void setup() {
 // LOOP
 // =====================
 
-void loop() {
-
+void loop()
+{
   readSerialNonBlocking();
+
+  // Safety stop
+  if (millis() - lastCommandTime > SERIAL_TIMEOUT) {
+    setMotor(L_DIR, L_PWM, 0);
+    setMotor(R_DIR, R_PWM, 0);
+  }
 
   if (millis() - lastLoop >= LOOP_TIME_MS) {
 
+    // Read encoders safely
     long l, r;
     noInterrupts();
     l = left_count;
     r = right_count;
     interrupts();
 
-    float yaw = 0;
+    float yaw = 0.0f;
 
     if (dmpReady) {
 
@@ -235,9 +246,12 @@ void loop() {
       }
     }
 
+    // Telemetry
     Serial.print("D,");
-    Serial.print(l); Serial.print(",");
-    Serial.print(r); Serial.print(",");
+    Serial.print(l);
+    Serial.print(",");
+    Serial.print(r);
+    Serial.print(",");
     Serial.println(yaw, 2);
 
     lastLoop = millis();
