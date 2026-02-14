@@ -1,0 +1,66 @@
+{
+    "red": {
+        "h_min": 0,
+        "h_max": 10,
+        "s_min": 100,
+        "s_max": 255,
+        "v_min": 100,
+        "v_max": 255
+    },
+    "green": {
+        "h_min": 35,
+        "h_max": 85,
+        "s_min": 50,
+        "s_max": 255,
+        "v_min": 50,
+        "v_max": 255
+    },
+    "blue": {
+        "h_min": 90,
+        "h_max": 130,
+        "s_min": 50,
+        "s_max": 255,
+        "v_min": 50,
+        "v_max": 255
+    },
+    "yellow": {
+        "h_min": 20,
+        "h_max": 35,
+        "s_min": 100,
+        "s_max": 255,
+        "v_min": 100,
+        "v_max": 255
+    },
+    "orange": {
+        "h_min": 10,
+        "h_max": 25,
+        "s_min": 100,
+        "s_max": 255,
+        "v_min": 100,
+        "v_max": 255
+    },
+    "purple": {
+        "h_min": 130,
+        "h_max": 160,
+        "s_min": 50,
+        "s_max": 255,
+        "v_min": 50,
+        "v_max": 255
+    },
+    "white": {
+        "h_min": 0,
+        "h_max": 179,
+        "s_min": 0,
+        "s_max": 40,
+        "v_min": 200,
+        "v_max": 255
+    },
+    "black": {
+        "h_min": 0,
+        "h_max": 179,
+        "s_min": 0,
+        "s_max": 255,
+        "v_min": 0,
+        "v_max": 40
+    }
+}
