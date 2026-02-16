@@ -55,13 +55,26 @@ python3 color_calibration_tool.py
 
 ---
 
-### 3. Shape Detector (`shape_detector.py`)
-Detects and classifies shapes: circle, triangle, square, rectangle.
+### 4. ROS Color Detection (`ros_color_detection.py`) [NEW]
+A ROS-compatible version of the color detector that subscribes to live camera topics.
 
 **Usage:**
 ```bash
-python3 shape_detector.py
+# Run with default Pi camera topic
+python3 ros_color_detection.py
+
+# Run with Ascamera RGB topic
+python3 ros_color_detection.py --ros-args -p camera_topic:=/ascamera/color0/image_raw
 ```
+
+**Features:**
+- Real-time HSV filtering via ROS parameters
+- Publishes binary mask to `/vision/color_mask`
+- Processes data directly from the robot's hardware interface
+
+---
+
+### 5. Shape Detector (`shape_detector.py`)
 
 **Shapes Detected:**
 - **Circle**: Circularity > 0.75
@@ -209,18 +222,23 @@ ssh -X pi@raspberry_pi_ip
 - Check firewall allows X server connections
 - Restart X server and reconnect
 
-### Alternative: Disable Windows
+### 4. Background Depth Filtering Logic
+In `rgbd_object_detector.py`, we use a unique filtering approach:
+1. **Sample Edges**: The script samples the outermost pixels of the depth frame (top, bottom, left, right).
+2. **Median Depth**: It calculates the median value of these samples to estimate the "background" (floor) distance.
+3. **Subtraction Mask**: Any pixel further than `background_depth - margin` is masked out. 
+4. **Result**: Only objects physically standing *above* the floor or background are processed by the color detector.
 
-If X11 forwarding is too slow, disable windows and use RViz or image topics:
+---
 
-```bash
-# Run without windows
-python3 rgbd_object_detector.py --ros-args -p show_windows:=false
+## Troubleshooting Depth-RGB Issues
 
-# View in RViz on laptop
-ros2 run rviz2 rviz2
-# Add Image display, topic: /vision/detected_objects
-```
+- **Objects not being detected**: The `background_margin_mm` might be too high (filtering out small objects) or too low (noise from the floor). Try adjusting it:
+  ```bash
+  ros2 run vision_system rgbd_object_detector --ros-args -p background_margin_mm:=30.0
+  ```
+- **Depth Map is Black**: Ensure you are using `rqt_image_view` with the "Normalize" checkbox enabled, or use RViz2 with appropriate range scaling.
+- **Misalignment**: If the color box and physical object don't match, check that you are subscribing to the *registered* depth topic (if available) or ensure the ascamera registration features are enabled in `ascamera.launch.py`.
 
 ---
 
